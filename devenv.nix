@@ -2,12 +2,6 @@
 
 let
   cfg = config.agentsInstructions;
-  projectRoot = if config.git.root != null then config.git.root else config.devenv.root;
-  materializeAbsPath =
-    if lib.hasPrefix "/" cfg.materializePath
-    then cfg.materializePath
-    else "${projectRoot}/${cfg.materializePath}";
-  materializeTargetExists = builtins.pathExists materializeAbsPath;
   materializedText =
     if cfg.materializeTemplate == "codexConfigToml"
     then lib.concatStringsSep "\n" [
@@ -17,13 +11,6 @@ let
       ""
     ]
     else agentsInstructionsText;
-  materializeEnabled =
-    if materializeTargetExists then
-      builtins.trace
-        "agentsInstructions: ${cfg.materializePath} already exists; skipping materialization to avoid overwriting."
-        false
-    else
-      true;
   agentsInstructionsText = lib.concatStringsSep "\n" cfg.mergedFragments;
   materializedFiles = {
     "${cfg.materializePath}".text = materializedText;
@@ -57,7 +44,7 @@ in
   };
 
   config = {
-    files = lib.mkIf materializeEnabled materializedFiles;
+    files = materializedFiles;
 
     outputs.agents_instructions = pkgs.writeText "agents-instructions.md" agentsInstructionsText;
   };

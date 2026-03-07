@@ -16,4 +16,3 @@
 ## Notes
 
 - The `codexConfigToml` value for the `materializeTemplate` option uses codex's `developer_instructions` config key, materializing `.codex/config.toml` instead of `AGENTS.md`.
-- If the target file already exists, materialization is skipped and warns.
