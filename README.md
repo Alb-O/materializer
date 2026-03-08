@@ -17,11 +17,7 @@
 ## Output
 
 - `outputs.materialized_text`
-- `outputs.materialize_local_input_overrides`
-
-## Commands
-
-- `materialize-local-input-overrides`: scans `devenv.yaml`, matches input URLs containing `matchPattern`, and materializes local overrides into `devenv.local.yaml`.
+- `outputs.materialized_local_input_overrides`
 
 Example generated override:
 
@@ -37,6 +33,6 @@ inputs:
 ## Notes
 
 - The `codexConfigToml` value for the `materializeTemplate` option uses codex's `developer_instructions` config key, materializing `.codex/config.toml` instead of `AGENTS.override.md`.
-- `devenv` already respects `devenv.local.yaml`; this command only materializes the file.
+- `devenv.local.yaml` is materialized through `files` on shell entry as a symlink to the Nix store (same mechanism as `AGENTS.override.md`).
 - Use `materializer.localInputOverrides.urlScheme = "git+file"` if you explicitly want git-backed local input URLs.
 - For matched inputs, all existing sibling/child keys are preserved; only `url` is rewritten.

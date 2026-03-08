@@ -3,42 +3,38 @@
 let
   cfg = config.materializer;
   pythonWithYaml = pkgs.python3.withPackages (ps: [ ps.pyyaml ]);
-  materializeLocalInputOverrides = pkgs.writeShellApplication {
-    name = "materialize-local-input-overrides";
-    runtimeInputs = [ pythonWithYaml ];
-    text = ''
-      set -euo pipefail
-
-      pattern=${lib.escapeShellArg cfg.localInputOverrides.matchPattern}
-      repos_root=${lib.escapeShellArg cfg.localInputOverrides.reposRoot}
-      source_path=${lib.escapeShellArg cfg.localInputOverrides.sourcePath}
-      output_path=${lib.escapeShellArg cfg.localInputOverrides.outputPath}
-      url_scheme=${lib.escapeShellArg cfg.localInputOverrides.urlScheme}
-
-      python3 - "$pattern" "$repos_root" "$source_path" "$output_path" "$url_scheme" <<'PY'
+  localInputOverridesSourcePath =
+    if lib.hasPrefix "/" cfg.localInputOverrides.sourcePath
+    then cfg.localInputOverrides.sourcePath
+    else "${config.env.DEVENV_ROOT}/${cfg.localInputOverrides.sourcePath}";
+  localInputOverridesText =
+    if builtins.pathExists localInputOverridesSourcePath
+    then builtins.readFile (pkgs.runCommand "materialized-local-input-overrides.yaml" {
+      nativeBuildInputs = [ pythonWithYaml ];
+      passAsFile = [ "sourceYaml" ];
+      sourceYaml = builtins.readFile localInputOverridesSourcePath;
+      matchPattern = cfg.localInputOverrides.matchPattern;
+      reposRoot = cfg.localInputOverrides.reposRoot;
+      urlScheme = cfg.localInputOverrides.urlScheme;
+    } ''
+      python3 - "$sourceYamlPath" "$matchPattern" "$reposRoot" "$urlScheme" > "$out" <<'PY'
 import os
 import sys
 import yaml
 
-pattern, repos_root, source_path, output_path, url_scheme = sys.argv[1:6]
+source_yaml_path, pattern, repos_root, url_scheme = sys.argv[1:5]
 
-if not os.path.exists(source_path):
-    print(f"source file not found: {source_path}", file=sys.stderr)
-    sys.exit(1)
-
-with open(source_path, "r", encoding="utf-8") as handle:
+with open(source_yaml_path, "r", encoding="utf-8") as handle:
     parsed = yaml.safe_load(handle) or {}
 
 if not isinstance(parsed, dict):
-    print(f"expected a top-level mapping in {source_path}", file=sys.stderr)
-    sys.exit(1)
+    raise SystemExit("expected a top-level mapping")
 
 inputs_block = parsed.get("inputs", {})
 if inputs_block is None:
     inputs_block = {}
 if not isinstance(inputs_block, dict):
-    print(f"expected `inputs` to be a mapping in {source_path}", file=sys.stderr)
-    sys.exit(1)
+    raise SystemExit("expected `inputs` to be a mapping")
 
 def repo_name_from_url(url):
     cleaned = url.split("?", 1)[0].split("#", 1)[0]
@@ -61,7 +57,6 @@ def repo_name_from_url(url):
     return cleaned or None
 
 overrides = {}
-missing = []
 
 for input_name, input_spec in inputs_block.items():
     input_url = None
@@ -76,10 +71,7 @@ for input_name, input_spec in inputs_block.items():
         input_url = input_spec
         copied_spec = {}
 
-    if input_url is None:
-        continue
-
-    if pattern not in input_url:
+    if input_url is None or pattern not in input_url:
         continue
 
     repo_name = repo_name_from_url(input_url)
@@ -87,10 +79,6 @@ for input_name, input_spec in inputs_block.items():
         continue
 
     local_repo_path = os.path.join(repos_root, repo_name)
-    if not os.path.isdir(local_repo_path):
-        missing.append((str(input_name), local_repo_path))
-        continue
-
     if url_scheme == "git+file":
         local_url = f"git+file:{local_repo_path}"
     else:
@@ -103,20 +91,10 @@ output_data = {"inputs": {}}
 for input_name in sorted(overrides):
     output_data["inputs"][input_name] = overrides[input_name]
 
-parent_dir = os.path.dirname(output_path)
-if parent_dir:
-    os.makedirs(parent_dir, exist_ok=True)
-
-with open(output_path, "w", encoding="utf-8") as handle:
-    yaml.safe_dump(output_data, handle, sort_keys=True, default_flow_style=False)
-
-for input_name, local_repo_path in missing:
-    print(f"skipped {input_name}: local repo not found at {local_repo_path}", file=sys.stderr)
-
-print(f"materialized {output_path} with {len(overrides)} override(s)")
+yaml.safe_dump(output_data, sys.stdout, sort_keys=True, default_flow_style=False)
 PY
-    '';
-  };
+    '')
+    else "inputs: {}\n";
 
   materializedText =
     if cfg.materializeTemplate == "codexConfigToml"
@@ -130,6 +108,7 @@ PY
   mergedMaterializerText = lib.concatStringsSep "\n" cfg.mergedFragments;
   materializedFiles = {
     "${cfg.materializePath}".text = materializedText;
+    "${cfg.localInputOverrides.outputPath}".text = localInputOverridesText;
   };
 in
 {
@@ -180,7 +159,7 @@ in
       outputPath = lib.mkOption {
         type = lib.types.str;
         default = "devenv.local.yaml";
-        description = "Output path for generated local input override YAML.";
+        description = "Output path for materialized local input override YAML.";
       };
 
       urlScheme = lib.mkOption {
@@ -193,9 +172,8 @@ in
 
   config = {
     files = materializedFiles;
-    scripts.materialize-local-input-overrides.exec = "${materializeLocalInputOverrides}/bin/materialize-local-input-overrides";
 
     outputs.materialized_text = pkgs.writeText "materialized-text.md" mergedMaterializerText;
-    outputs.materialize_local_input_overrides = materializeLocalInputOverrides;
+    outputs.materialized_local_input_overrides = pkgs.writeText "devenv-local-input-overrides.yaml" localInputOverridesText;
   };
 }
