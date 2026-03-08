@@ -12,14 +12,15 @@ let
       repos_root=${lib.escapeShellArg cfg.localInputOverrides.reposRoot}
       source_path=${lib.escapeShellArg cfg.localInputOverrides.sourcePath}
       output_path=${lib.escapeShellArg cfg.localInputOverrides.outputPath}
+      url_scheme=${lib.escapeShellArg cfg.localInputOverrides.urlScheme}
       include_flake_false=${if cfg.localInputOverrides.includeFlakeFalse then "true" else "false"}
 
-      python3 - "$pattern" "$repos_root" "$source_path" "$output_path" "$include_flake_false" <<'PY'
+      python3 - "$pattern" "$repos_root" "$source_path" "$output_path" "$url_scheme" "$include_flake_false" <<'PY'
 import os
 import re
 import sys
 
-pattern, repos_root, source_path, output_path, include_flake_false_arg = sys.argv[1:6]
+pattern, repos_root, source_path, output_path, url_scheme, include_flake_false_arg = sys.argv[1:7]
 include_flake_false = include_flake_false_arg.lower() == "true"
 
 if not os.path.exists(source_path):
@@ -109,8 +110,13 @@ overrides.sort(key=lambda item: item[0])
 if overrides:
     output_lines = ["inputs:"]
     for input_name, local_repo_path in overrides:
+        if url_scheme == "git+file":
+            local_url = f"git+file:{local_repo_path}"
+        else:
+            local_url = f"path:{local_repo_path}"
+
         output_lines.append(f"  {input_name}:")
-        output_lines.append(f"    url: git+file:{local_repo_path}")
+        output_lines.append(f"    url: {local_url}")
         if include_flake_false:
             output_lines.append("    flake: false")
 else:
@@ -194,6 +200,12 @@ in
         type = lib.types.str;
         default = "devenv.local.yaml";
         description = "Output path for generated local input override YAML.";
+      };
+
+      urlScheme = lib.mkOption {
+        type = lib.types.enum [ "path" "git+file" ];
+        default = "path";
+        description = "URL scheme used for generated local repo overrides.";
       };
 
       includeFlakeFalse = lib.mkOption {
