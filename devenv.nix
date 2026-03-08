@@ -2,9 +2,10 @@
 
 let
   cfg = config.materializer;
+  pythonWithYaml = pkgs.python3.withPackages (ps: [ ps.pyyaml ]);
   materializeLocalInputOverrides = pkgs.writeShellApplication {
     name = "materialize-local-input-overrides";
-    runtimeInputs = [ pkgs.python3 ];
+    runtimeInputs = [ pythonWithYaml ];
     text = ''
       set -euo pipefail
 
@@ -17,8 +18,8 @@ let
 
       python3 - "$pattern" "$repos_root" "$source_path" "$output_path" "$url_scheme" "$include_flake_false" <<'PY'
 import os
-import re
 import sys
+import yaml
 
 pattern, repos_root, source_path, output_path, url_scheme, include_flake_false_arg = sys.argv[1:7]
 include_flake_false = include_flake_false_arg.lower() == "true"
@@ -28,44 +29,26 @@ if not os.path.exists(source_path):
     sys.exit(1)
 
 with open(source_path, "r", encoding="utf-8") as handle:
-    lines = handle.readlines()
+    parsed = yaml.safe_load(handle) or {}
+
+if not isinstance(parsed, dict):
+    print(f"expected a top-level mapping in {source_path}", file=sys.stderr)
+    sys.exit(1)
+
+inputs_block = parsed.get("inputs", {})
+if inputs_block is None:
+    inputs_block = {}
+if not isinstance(inputs_block, dict):
+    print(f"expected `inputs` to be a mapping in {source_path}", file=sys.stderr)
+    sys.exit(1)
 
 entries = []
-in_inputs_block = False
-current = None
-
-def finish_current():
-    global current
-    if current is not None and current.get("url"):
-        entries.append({"name": current["name"], "url": current["url"]})
-    current = None
-
-for raw_line in lines:
-    line = raw_line.rstrip("\n")
-
-    if not in_inputs_block:
-        if re.match(r"^inputs:\s*$", line):
-            in_inputs_block = True
+for input_name, input_spec in inputs_block.items():
+    if not isinstance(input_spec, dict):
         continue
-
-    if re.match(r"^[A-Za-z0-9_.-]+:\s*$", line):
-        finish_current()
-        break
-
-    input_match = re.match(r"^  ([A-Za-z0-9_.-]+):\s*$", line)
-    if input_match:
-        finish_current()
-        current = {"name": input_match.group(1), "url": None}
-        continue
-
-    if current is None:
-        continue
-
-    url_match = re.match(r"^    url:\s*(.+?)\s*$", line)
-    if url_match:
-        current["url"] = url_match.group(1).strip().strip("'").strip('"')
-
-finish_current()
+    input_url = input_spec.get("url")
+    if isinstance(input_url, str) and input_url:
+        entries.append({"name": str(input_name), "url": input_url})
 
 def repo_name_from_url(url):
     cleaned = url.split("?", 1)[0].split("#", 1)[0]
@@ -108,26 +91,25 @@ for entry in entries:
 overrides.sort(key=lambda item: item[0])
 
 if overrides:
-    output_lines = ["inputs:"]
+    output_data = {"inputs": {}}
     for input_name, local_repo_path in overrides:
         if url_scheme == "git+file":
             local_url = f"git+file:{local_repo_path}"
         else:
             local_url = f"path:{local_repo_path}"
 
-        output_lines.append(f"  {input_name}:")
-        output_lines.append(f"    url: {local_url}")
+        output_data["inputs"][input_name] = {"url": local_url}
         if include_flake_false:
-            output_lines.append("    flake: false")
+            output_data["inputs"][input_name]["flake"] = False
 else:
-    output_lines = ["inputs: {}"]
+    output_data = {"inputs": {}}
 
 parent_dir = os.path.dirname(output_path)
 if parent_dir:
     os.makedirs(parent_dir, exist_ok=True)
 
 with open(output_path, "w", encoding="utf-8") as handle:
-    handle.write("\n".join(output_lines) + "\n")
+    yaml.safe_dump(output_data, handle, sort_keys=True, default_flow_style=False)
 
 for input_name, local_repo_path in missing:
     print(f"skipped {input_name}: local repo not found at {local_repo_path}", file=sys.stderr)
