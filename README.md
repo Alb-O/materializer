@@ -4,6 +4,7 @@
 
 ## Options
 
+- `materializer.projectName` (default `null`: basename of `config.devenv.root`)
 - `materializer.ownFragments`
 - `materializer.mergedFragments`
 - `materializer.materializePath` (default `AGENTS.override.md`)
@@ -33,7 +34,11 @@ inputs:
 ## Notes
 
 - The `codexConfigToml` value for the `materializeTemplate` option uses codex's `developer_instructions` config key, materializing `.codex/config.toml` instead of `AGENTS.override.md`.
-- The main materialized instruction file is only created when the effective merged fragment list is non-empty.
+- Ordering strategy:
+  - start with `materializer.mergedFragments` in declared order
+  - append `materializer.ownFragments.<current-project>` where current project is `materializer.projectName` or the basename of `config.devenv.root`
+  - de-duplicate by fragment text with keep-last semantics (so the current project fragment ends up last/highest priority)
+- The main materialized instruction file is only created when this effective merged fragment list is non-empty.
 - `devenv.local.yaml` is materialized through `files` on shell entry as a symlink to the Nix store (same mechanism as `AGENTS.override.md`) only when at least one input matches.
 - For machine-local path overrides, set `materializer.localInputOverrides.reposRoot` in `devenv.local.nix` (untracked).
 - Use `materializer.localInputOverrides.urlScheme = "git+file"` if you explicitly want git-backed local input URLs.

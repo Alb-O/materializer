@@ -4,6 +4,12 @@ let
   cfg = config.materializer;
   pythonWithYaml = pkgs.python3.withPackages (ps: [ ps.pyyaml ]);
   localInputOverridesScript = ./scripts/materialize_local_input_overrides.py;
+  currentProjectName =
+    if cfg.projectName != null
+    then cfg.projectName
+    else builtins.baseNameOf (toString config.devenv.root);
+  currentProjectOwnFragments = lib.attrByPath [ currentProjectName ] [] cfg.ownFragments;
+  effectiveMergedFragments = lib.reverseList (lib.unique (lib.reverseList (cfg.mergedFragments ++ currentProjectOwnFragments)));
   localInputOverridesReposRoot =
     if cfg.localInputOverrides.reposRoot != null
     then cfg.localInputOverrides.reposRoot
@@ -35,10 +41,16 @@ let
       ""
     ]
     else mergedMaterializerText;
-  mergedMaterializerText = lib.concatStringsSep "\n" cfg.mergedFragments;
+  mergedMaterializerText = lib.concatStringsSep "\n" effectiveMergedFragments;
 in
 {
   options.materializer = {
+    projectName = lib.mkOption {
+      type = lib.types.nullOr lib.types.str;
+      default = null;
+      description = "Current project key used to resolve `ownFragments.<projectName>`. Defaults to the basename of `config.devenv.root`.";
+    };
+
     ownFragments = lib.mkOption {
       type = with lib.types; attrsOf (listOf str);
       default = {};
@@ -97,7 +109,7 @@ in
   };
 
   config = lib.mkMerge [
-    (lib.mkIf (mergedMaterializerText != "") {
+    (lib.mkIf (effectiveMergedFragments != []) {
       files."${cfg.materializePath}".text = materializedText;
       outputs.materialized_text = pkgs.writeText "materialized-text.md" mergedMaterializerText;
     })
