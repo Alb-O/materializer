@@ -14,15 +14,13 @@ let
       source_path=${lib.escapeShellArg cfg.localInputOverrides.sourcePath}
       output_path=${lib.escapeShellArg cfg.localInputOverrides.outputPath}
       url_scheme=${lib.escapeShellArg cfg.localInputOverrides.urlScheme}
-      include_flake_false=${if cfg.localInputOverrides.includeFlakeFalse then "true" else "false"}
 
-      python3 - "$pattern" "$repos_root" "$source_path" "$output_path" "$url_scheme" "$include_flake_false" <<'PY'
+      python3 - "$pattern" "$repos_root" "$source_path" "$output_path" "$url_scheme" <<'PY'
 import os
 import sys
 import yaml
 
-pattern, repos_root, source_path, output_path, url_scheme, include_flake_false_arg = sys.argv[1:7]
-include_flake_false = include_flake_false_arg.lower() == "true"
+pattern, repos_root, source_path, output_path, url_scheme = sys.argv[1:6]
 
 if not os.path.exists(source_path):
     print(f"source file not found: {source_path}", file=sys.stderr)
@@ -41,14 +39,6 @@ if inputs_block is None:
 if not isinstance(inputs_block, dict):
     print(f"expected `inputs` to be a mapping in {source_path}", file=sys.stderr)
     sys.exit(1)
-
-entries = []
-for input_name, input_spec in inputs_block.items():
-    if not isinstance(input_spec, dict):
-        continue
-    input_url = input_spec.get("url")
-    if isinstance(input_url, str) and input_url:
-        entries.append({"name": str(input_name), "url": input_url})
 
 def repo_name_from_url(url):
     cleaned = url.split("?", 1)[0].split("#", 1)[0]
@@ -70,39 +60,48 @@ def repo_name_from_url(url):
 
     return cleaned or None
 
-overrides = []
+overrides = {}
 missing = []
 
-for entry in entries:
-    if pattern not in entry["url"]:
+for input_name, input_spec in inputs_block.items():
+    input_url = None
+    copied_spec = None
+
+    if isinstance(input_spec, dict):
+        candidate_url = input_spec.get("url")
+        if isinstance(candidate_url, str) and candidate_url:
+            input_url = candidate_url
+            copied_spec = dict(input_spec)
+    elif isinstance(input_spec, str) and input_spec:
+        input_url = input_spec
+        copied_spec = {}
+
+    if input_url is None:
         continue
 
-    repo_name = repo_name_from_url(entry["url"])
+    if pattern not in input_url:
+        continue
+
+    repo_name = repo_name_from_url(input_url)
     if not repo_name:
         continue
 
     local_repo_path = os.path.join(repos_root, repo_name)
     if not os.path.isdir(local_repo_path):
-        missing.append((entry["name"], local_repo_path))
+        missing.append((str(input_name), local_repo_path))
         continue
 
-    overrides.append((entry["name"], local_repo_path))
+    if url_scheme == "git+file":
+        local_url = f"git+file:{local_repo_path}"
+    else:
+        local_url = f"path:{local_repo_path}"
 
-overrides.sort(key=lambda item: item[0])
+    copied_spec["url"] = local_url
+    overrides[str(input_name)] = copied_spec
 
-if overrides:
-    output_data = {"inputs": {}}
-    for input_name, local_repo_path in overrides:
-        if url_scheme == "git+file":
-            local_url = f"git+file:{local_repo_path}"
-        else:
-            local_url = f"path:{local_repo_path}"
-
-        output_data["inputs"][input_name] = {"url": local_url}
-        if include_flake_false:
-            output_data["inputs"][input_name]["flake"] = False
-else:
-    output_data = {"inputs": {}}
+output_data = {"inputs": {}}
+for input_name in sorted(overrides):
+    output_data["inputs"][input_name] = overrides[input_name]
 
 parent_dir = os.path.dirname(output_path)
 if parent_dir:
@@ -188,12 +187,6 @@ in
         type = lib.types.enum [ "path" "git+file" ];
         default = "path";
         description = "URL scheme used for generated local repo overrides.";
-      };
-
-      includeFlakeFalse = lib.mkOption {
-        type = lib.types.bool;
-        default = true;
-        description = "Whether generated overrides include `flake: false` for each matched input.";
       };
     };
   };

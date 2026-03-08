@@ -13,7 +13,6 @@
 - `materializer.localInputOverrides.sourcePath` (default `devenv.yaml`)
 - `materializer.localInputOverrides.outputPath` (default `devenv.local.yaml`)
 - `materializer.localInputOverrides.urlScheme` (`path` or `git+file`, default `path`)
-- `materializer.localInputOverrides.includeFlakeFalse` (default `true`)
 
 ## Output
 
@@ -31,6 +30,8 @@ inputs:
   committer:
     url: path:/home/albert/devenv/repos/committer
     flake: false
+    any_other_key:
+      nested: value
 ```
 
 ## Notes
@@ -38,3 +39,4 @@ inputs:
 - The `codexConfigToml` value for the `materializeTemplate` option uses codex's `developer_instructions` config key, materializing `.codex/config.toml` instead of `AGENTS.override.md`.
 - `devenv` already respects `devenv.local.yaml`; this command only materializes the file.
 - Use `materializer.localInputOverrides.urlScheme = "git+file"` if you explicitly want git-backed local input URLs.
+- For matched inputs, all existing sibling/child keys are preserved; only `url` is rewritten.
