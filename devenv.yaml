@@ -14,13 +14,13 @@ inputs:
   committer:
     url: github:Alb-O/committer
     flake: false
-  env-docs:
-    url: github:Alb-O/env-docs
+  dvnv-docs-env:
+    url: github:Alb-O/dvnv-docs-env
     flake: false
-  env-local-overrides:
-    url: github:Alb-O/env-local-overrides
+  dvnv-local-inputs:
+    url: github:Alb-O/dvnv-local-inputs
     flake: false
 imports:
   - committer
-  - env-docs
-  - env-local-overrides
+  - dvnv-docs-env
+  - dvnv-local-inputs

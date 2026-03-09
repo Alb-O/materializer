@@ -1,13 +1,15 @@
 { pkgs, config, lib, ... }:
 
 let
-  cfg = config.materializer;
+  cfg = config.composer;
   currentProjectName =
     if cfg.projectName != null
     then cfg.projectName
     else builtins.baseNameOf (toString config.devenv.root);
-  currentProjectOwnFragments = lib.attrByPath [ currentProjectName ] [] cfg.ownFragments;
-  effectiveMergedFragments = lib.reverseList (lib.unique (lib.reverseList (cfg.mergedFragments ++ currentProjectOwnFragments)));
+  currentProjectOwnInstructions = lib.attrByPath [ currentProjectName ] [] cfg.ownInstructions;
+  effectiveComposedInstructions = lib.reverseList (
+    lib.unique (lib.reverseList (cfg.composedInstructions ++ currentProjectOwnInstructions))
+  );
 
   collapseConsecutiveBlankLines =
     text:
@@ -29,60 +31,60 @@ let
       } (lib.splitString "\n" text);
     in
     lib.concatStringsSep "\n" (lib.reverseList folded.revLines);
-  rawMergedMaterializerText = lib.concatStringsSep "\n" effectiveMergedFragments;
-  mergedMaterializerText = collapseConsecutiveBlankLines rawMergedMaterializerText;
-  materializedText =
+  rawComposedInstructionsText = lib.concatStringsSep "\n" effectiveComposedInstructions;
+  composedInstructionsText = collapseConsecutiveBlankLines rawComposedInstructionsText;
+  renderedMaterializedText =
     if cfg.materializeTemplate == "codexConfigToml"
     then lib.concatStringsSep "\n" [
       "developer_instructions = '''"
-      mergedMaterializerText
+      composedInstructionsText
       "'''"
       ""
     ]
-    else mergedMaterializerText;
+    else composedInstructionsText;
 in
 {
   options = {
-    materializer = {
-    projectName = lib.mkOption {
-      type = lib.types.nullOr lib.types.str;
-      default = null;
-      description = "Current project key used to resolve `ownFragments.<projectName>`. Defaults to the basename of `config.devenv.root`.";
-    };
+    composer = {
+      projectName = lib.mkOption {
+        type = lib.types.nullOr lib.types.str;
+        default = null;
+        description = "Current project key used to resolve `ownInstructions.<projectName>`. Defaults to the basename of `config.devenv.root`.";
+      };
 
-    ownFragments = lib.mkOption {
-      type = with lib.types; attrsOf (listOf str);
-      default = {};
-      description = "Project-owned instruction fragments keyed by project name.";
-    };
+      ownInstructions = lib.mkOption {
+        type = with lib.types; attrsOf (listOf str);
+        default = {};
+        description = "Project-owned instruction text keyed by project name.";
+      };
 
-    mergedFragments = lib.mkOption {
-      type = with lib.types; listOf str;
-      default = [];
-      description = "Instruction text fragments merged from upstream to downstream repos.";
-    };
+      composedInstructions = lib.mkOption {
+        type = with lib.types; listOf str;
+        default = [];
+        description = "Instruction text composed from upstream to downstream repos.";
+      };
 
-    materializePath = lib.mkOption {
-      type = lib.types.str;
-      default = "AGENTS.override.md";
-      description = "Relative or absolute output file path to materialize.";
-    };
+      materializePath = lib.mkOption {
+        type = lib.types.str;
+        default = "AGENTS.override.md";
+        description = "Relative or absolute output file path to materialize.";
+      };
 
-    materializeTemplate = lib.mkOption {
-      type = lib.types.enum [ "plainText" "codexConfigToml" ];
-      default = "plainText";
-      description = "Materialization template: plain text or Codex config TOML.";
-    };
+      materializeTemplate = lib.mkOption {
+        type = lib.types.enum [ "plainText" "codexConfigToml" ];
+        default = "plainText";
+        description = "Materialization template: plain text or Codex config TOML.";
+      };
     };
   };
 
   config = lib.mkMerge [
-    (lib.mkIf (config.instructions.fragments != []) {
-      materializer.mergedFragments = lib.mkBefore config.instructions.fragments;
+    (lib.mkIf (config.instructions.instructions != []) {
+      composer.composedInstructions = lib.mkBefore config.instructions.instructions;
     })
-    (lib.mkIf (effectiveMergedFragments != []) {
-      files."${cfg.materializePath}".text = materializedText;
-      outputs.materialized_text = pkgs.writeText "materialized-text.md" mergedMaterializerText;
+    (lib.mkIf (effectiveComposedInstructions != []) {
+      files."${cfg.materializePath}".text = renderedMaterializedText;
+      outputs.composed_instructions = pkgs.writeText "composed-instructions.md" composedInstructionsText;
     })
   ];
 }
