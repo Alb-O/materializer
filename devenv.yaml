@@ -11,8 +11,8 @@ inputs:
     inputs:
       nixpkgs:
         follows: nixpkgs
-  committer:
-    url: github:Alb-O/committer
+  agent-committer:
+    url: github:Alb-O/agent-committer
     flake: false
   dvnv-docs-env:
     url: github:Alb-O/dvnv-docs-env
@@ -21,6 +21,6 @@ inputs:
     url: github:Alb-O/dvnv-local-inputs
     flake: false
 imports:
-  - committer
+  - agent-committer
   - dvnv-docs-env
   - dvnv-local-inputs
