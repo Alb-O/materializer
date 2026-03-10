@@ -1,12 +1,18 @@
-{ pkgs, config, lib, ... }:
+{
+  pkgs,
+  config,
+  lib,
+  ...
+}:
 
 let
   cfg = config.composer;
   currentProjectName =
-    if cfg.projectName != null
-    then cfg.projectName
-    else builtins.baseNameOf (toString config.devenv.root);
-  currentProjectOwnInstructions = lib.attrByPath [ currentProjectName ] [] cfg.ownInstructions;
+    if cfg.projectName != null then
+      cfg.projectName
+    else
+      builtins.baseNameOf (toString config.devenv.root);
+  currentProjectOwnInstructions = lib.attrByPath [ currentProjectName ] [ ] cfg.ownInstructions;
   effectiveComposedInstructions = lib.reverseList (
     lib.unique (lib.reverseList (cfg.composedInstructions ++ currentProjectOwnInstructions))
   );
@@ -14,34 +20,40 @@ let
   collapseConsecutiveBlankLines =
     text:
     let
-      folded = lib.foldl' (
-        acc: line:
-        let
-          isBlank = builtins.match "^[ \t\r]*$" line != null;
-        in
-        if isBlank && acc.previousBlank
-        then acc
-        else {
-          previousBlank = isBlank;
-          revLines = [ line ] ++ acc.revLines;
-        }
-      ) {
-        previousBlank = false;
-        revLines = [];
-      } (lib.splitString "\n" text);
+      folded =
+        lib.foldl'
+          (
+            acc: line:
+            let
+              isBlank = builtins.match "^[ \t\r]*$" line != null;
+            in
+            if isBlank && acc.previousBlank then
+              acc
+            else
+              {
+                previousBlank = isBlank;
+                revLines = [ line ] ++ acc.revLines;
+              }
+          )
+          {
+            previousBlank = false;
+            revLines = [ ];
+          }
+          (lib.splitString "\n" text);
     in
     lib.concatStringsSep "\n" (lib.reverseList folded.revLines);
   rawComposedInstructionsText = lib.concatStringsSep "\n" effectiveComposedInstructions;
   composedInstructionsText = collapseConsecutiveBlankLines rawComposedInstructionsText;
   renderedMaterializedText =
-    if cfg.materializeTemplate == "codexConfigToml"
-    then lib.concatStringsSep "\n" [
-      "developer_instructions = '''"
-      composedInstructionsText
-      "'''"
-      ""
-    ]
-    else composedInstructionsText;
+    if cfg.materializeTemplate == "codexConfigToml" then
+      lib.concatStringsSep "\n" [
+        "developer_instructions = '''"
+        composedInstructionsText
+        "'''"
+        ""
+      ]
+    else
+      composedInstructionsText;
 in
 {
   options = {
@@ -54,13 +66,13 @@ in
 
       ownInstructions = lib.mkOption {
         type = with lib.types; attrsOf (listOf str);
-        default = {};
+        default = { };
         description = "Project-owned instruction text keyed by project name.";
       };
 
       composedInstructions = lib.mkOption {
         type = with lib.types; listOf str;
-        default = [];
+        default = [ ];
         description = "Instruction text composed from upstream to downstream repos.";
       };
 
@@ -71,7 +83,10 @@ in
       };
 
       materializeTemplate = lib.mkOption {
-        type = lib.types.enum [ "plainText" "codexConfigToml" ];
+        type = lib.types.enum [
+          "plainText"
+          "codexConfigToml"
+        ];
         default = "plainText";
         description = "Materialization template: plain text or Codex config TOML.";
       };
@@ -79,10 +94,10 @@ in
   };
 
   config = lib.mkMerge [
-    (lib.mkIf (config.instructions.instructions != []) {
+    (lib.mkIf (config.instructions.instructions != [ ]) {
       composer.composedInstructions = lib.mkBefore config.instructions.instructions;
     })
-    (lib.mkIf (effectiveComposedInstructions != []) {
+    (lib.mkIf (effectiveComposedInstructions != [ ]) {
       files."${cfg.materializePath}".text = renderedMaterializedText;
       outputs.composed_instructions = pkgs.writeText "composed-instructions.md" composedInstructionsText;
     })

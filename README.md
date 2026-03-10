@@ -18,6 +18,9 @@
 `composer.composedInstructions` with `mkBefore`, so producer modules can add
 shared instruction text without writing to `composer.*` directly.
 
+For repo-local instructions that should end up last in the rendered output, use
+`composer.ownInstructions.<current-project>` instead of `instructions.instructions`.
+
 ## Output
 
 - `outputs.composed_instructions` (only when the effective composed instruction list is non-empty)
@@ -28,5 +31,6 @@ shared instruction text without writing to `composer.*` directly.
 - Ordering strategy:
   - start with `composer.composedInstructions` in declared order
   - append `composer.ownInstructions.<current-project>` where current project is `composer.projectName` or the basename of `config.devenv.root`
+  - use `instructions.instructions` for shared upstream/module text, not for the current repo's own trailing fragment
   - de-duplicate by instruction text with keep-last semantics (so the current project instruction ends up last/highest priority)
 - The main materialized instruction file is only created when this effective composed instruction list is non-empty.
