@@ -57,6 +57,12 @@ let
 in
 {
   options = {
+    instructions.instructions = lib.mkOption {
+      type = with lib.types; listOf str;
+      default = [ ];
+      description = "Shared instruction text that modules can add.";
+    };
+
     composer = {
       projectName = lib.mkOption {
         type = lib.types.nullOr lib.types.str;
