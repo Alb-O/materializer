@@ -11,12 +11,3 @@ inputs:
     inputs:
       nixpkgs:
         follows: nixpkgs
-  poly-docs-env:
-    url: github:Alb-O/poly-docs-env
-    flake: false
-  poly-bootstrap:
-    url: github:Alb-O/poly-bootstrap
-    flake: false
-imports:
-  - poly-docs-env
-  - poly-bootstrap
